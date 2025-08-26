@@ -1,0 +1,15 @@
+[Unit]
+Description=Patient Robot Kiosk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=ROBOT_URL=http://localhost:3000/robot.html
+Environment=ROOM=ward-1
+ExecStart=/bin/bash -lc '/workspace/patient-robot-call/scripts/pi-kiosk.sh'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
