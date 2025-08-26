@@ -45,9 +45,25 @@ io.on('connection', socket => {
 	let joinedRoom = null
 
 	socket.on('join', ({ room, role }) => {
+		const roomSet = io.sockets.adapter.rooms.get(room) || new Set()
+		const existingCount = roomSet.size
+		if (existingCount >= 2) {
+			socket.emit('room-full', { room })
+			return
+		}
 		joinedRoom = room
 		socket.join(room)
+		const polite = existingCount === 1
+		socket.emit('joined', { room, role, polite })
 		socket.to(room).emit('peer-joined', { id: socket.id, role })
+	})
+
+	socket.on('leave', () => {
+		if (joinedRoom) {
+			socket.to(joinedRoom).emit('peer-left', { id: socket.id })
+			socket.leave(joinedRoom)
+			joinedRoom = null
+		}
 	})
 
 	socket.on('disconnect', () => {
@@ -57,7 +73,7 @@ io.on('connection', socket => {
 	})
 
 	// Relay signaling messages within room
-	for (const event of ['offer', 'answer', 'candidate', 'ready']) {
+	for (const event of ['offer', 'answer', 'candidate']) {
 		socket.on(event, payload => {
 			if (!joinedRoom) return
 			socket.to(joinedRoom).emit(event, { from: socket.id, ...payload })

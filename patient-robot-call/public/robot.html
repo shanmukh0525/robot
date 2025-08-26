@@ -9,7 +9,7 @@
 		body { font-family: system-ui, Arial, sans-serif; margin: 1rem; }
 		#videos { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 		video { width: 100%; background: #000; border-radius: 8px; }
-		.controls { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1rem; }
+		.controls { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 1rem; }
 		label { display: flex; flex-direction: column; gap: .25rem; }
 		button { padding: .5rem .75rem; font-size: 1rem; }
 	</style>
@@ -21,8 +21,12 @@
 			<input id="room" value="ward-1" />
 		</label>
 		<div>
-			<button id="join">Join and Auto-Answer</button>
-			<button id="leave" disabled>Leave</button>
+			<button id="connect">Connect</button>
+			<button id="disconnect" disabled>Disconnect</button>
+		</div>
+		<div>
+			<button id="toggleVideo" disabled>Toggle Camera</button>
+			<button id="toggleAudio" disabled>Toggle Mic</button>
 		</div>
 	</div>
 	<div id="videos">
@@ -35,10 +39,19 @@
 		const localVideo = document.getElementById('local')
 		const remoteVideo = document.getElementById('remote')
 		const roomInput = document.getElementById('room')
-		const joinBtn = document.getElementById('join')
-		const leaveBtn = document.getElementById('leave')
+		const connectBtn = document.getElementById('connect')
+		const disconnectBtn = document.getElementById('disconnect')
+		const toggleVideoBtn = document.getElementById('toggleVideo')
+		const toggleAudioBtn = document.getElementById('toggleAudio')
+
+		// Allow ?room=foo to prefill
+		const params = new URLSearchParams(location.search)
+		if (params.get('room')) roomInput.value = params.get('room')
 
 		let pc, localStream
+		let makingOffer = false
+		let ignoreOffer = false
+		let polite = false
 		let iceServers = []
 
 		async function loadIce() {
@@ -49,44 +62,87 @@
 
 		function createPeer() {
 			pc = new RTCPeerConnection({ iceServers })
-			pc.onicecandidate = e => {
-				if (e.candidate) socket.emit('candidate', { candidate: e.candidate })
-			}
+			pc.onicecandidate = e => { if (e.candidate) socket.emit('candidate', { candidate: e.candidate }) }
 			pc.ontrack = e => { remoteVideo.srcObject = e.streams[0] }
+			pc.onnegotiationneeded = async () => {
+				try {
+					makingOffer = true
+					await pc.setLocalDescription(await pc.createOffer())
+					socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type })
+				} catch (err) {
+					console.error(err)
+				} finally {
+					makingOffer = false
+				}
+			}
 		}
 
-		async function join() {
-			await loadIce()
-			createPeer()
-			// Robot sends video+audio from Pi camera and mic
+		async function getMedia() {
 			const constraints = { video: true, audio: true }
 			localStream = await navigator.mediaDevices.getUserMedia(constraints)
 			localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
 			localVideo.srcObject = localStream
-			socket.emit('join', { room: roomInput.value, role: 'robot' })
-			joinBtn.disabled = true; leaveBtn.disabled = false
 		}
 
-		function leave() {
+		async function connect() {
+			await loadIce()
+			createPeer()
+			await getMedia()
+			socket.emit('join', { room: roomInput.value, role: 'robot' })
+			connectBtn.disabled = true; disconnectBtn.disabled = false
+			toggleVideoBtn.disabled = false; toggleAudioBtn.disabled = false
+		}
+
+		function disconnect() {
+			socket.emit('leave')
 			if (pc) pc.close()
 			if (localStream) localStream.getTracks().forEach(t => t.stop())
-			joinBtn.disabled = false; leaveBtn.disabled = true
+			connectBtn.disabled = false; disconnectBtn.disabled = true
+			toggleVideoBtn.disabled = true; toggleAudioBtn.disabled = true
 		}
 
+		socket.on('joined', ({ polite: p }) => { polite = p })
+
 		socket.on('offer', async ({ sdp, type }) => {
-			if (!pc) return
-			await pc.setRemoteDescription({ sdp, type })
-			const answer = await pc.createAnswer()
-			await pc.setLocalDescription(answer)
-			socket.emit('answer', { sdp: answer.sdp, type: answer.type })
+			const offer = { sdp, type }
+			const offerCollision = makingOffer || pc.signalingState !== 'stable'
+			ignoreOffer = !polite && offerCollision
+			if (ignoreOffer) return
+			try {
+				await pc.setRemoteDescription(offer)
+				await pc.setLocalDescription(await pc.createAnswer())
+				socket.emit('answer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type })
+			} catch (err) { console.error(err) }
+		})
+
+		socket.on('answer', async ({ sdp, type }) => {
+			try { await pc.setRemoteDescription({ sdp, type }) } catch (err) { console.error(err) }
 		})
 
 		socket.on('candidate', async ({ candidate }) => {
-			try { candidate && pc && await pc.addIceCandidate(candidate) } catch {}
+			try { if (candidate) await pc.addIceCandidate(candidate) } catch (err) {
+				if (!ignoreOffer) console.error(err)
+			}
 		})
 
-		joinBtn.onclick = join
-		leaveBtn.onclick = leave
+		socket.on('peer-left', () => { remoteVideo.srcObject = null })
+		socket.on('room-full', () => alert('Room is full (2 participants max)'))
+
+		toggleVideoBtn.onclick = () => {
+			const track = localStream?.getVideoTracks()[0]
+			if (!track) return
+			track.enabled = !track.enabled
+			toggleVideoBtn.textContent = track.enabled ? 'Turn Camera Off' : 'Turn Camera On'
+		}
+		toggleAudioBtn.onclick = () => {
+			const track = localStream?.getAudioTracks()[0]
+			if (!track) return
+			track.enabled = !track.enabled
+			toggleAudioBtn.textContent = track.enabled ? 'Mute Mic' : 'Unmute Mic'
+		}
+
+		connectBtn.onclick = connect
+		disconnectBtn.onclick = disconnect
 	</script>
 </body>
 </html>
