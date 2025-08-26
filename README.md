@@ -1,5 +1,5 @@
-Patient Robot Video Call (Raspberry Pi 5)
-A minimal WebRTC video calling app for a patient service robot using a Node.js signaling server and web UIs for operator and robot.
+**Patient Robot Video Call (Raspberry Pi 5)**
+**A minimal WebRTC video calling app for a patient service robot using a Node.js signaling server and web UIs for operator and robot.**
 
 Features
 Room-based signaling over Socket.IO
