@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Patient Robot Call</title>
+	<style>
+		body { font-family: system-ui, Arial, sans-serif; margin: 2rem; }
+		.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+		.card { border: 1px solid #ddd; border-radius: 12px; padding: 1rem; }
+		h1 { margin-top: 0; }
+		input, button, select { font-size: 1rem; padding: .5rem; }
+	</style>
+</head>
+<body>
+	<h1>Patient Robot Video Call</h1>
+	<div class="grid">
+		<div class="card">
+			<h3>Operator Console</h3>
+			<p>Start a call to the robot.</p>
+			<a href="/operator.html">Open Operator</a>
+		</div>
+		<div class="card">
+			<h3>Robot Console</h3>
+			<p>Auto-answers the operator's call.</p>
+			<a href="/robot.html">Open Robot</a>
+		</div>
+	</div>
+</body>
+</html>
